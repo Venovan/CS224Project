@@ -17,10 +17,6 @@ class LINK;
 
 
 
-vector <BRDG> Bridges;
-vector <LINK> Links;
-
-
 
 
 //////////////////////////EASE///////////////////////////
@@ -38,25 +34,6 @@ vector <vector <int>> slicing(vector <vector <int>> msg, int x){
     msg.erase(msg.begin()+x);
     return msg;
 }
-//////////////////////PORT//////////////////////////////
-
-
-class PORT{
-    public:
-        string status;
-        int ID;
-        LINK* Link;
-        PORT(int id){
-            ID = id+1;
-            status = "DP";
-        }
-        void linking(LINK &link){
-            Link = &link;
-            }
-        void status_update(string update){
-            status = update;
-        }
-};
 
 ////////////////////LINK/////////////////////////////
 
@@ -65,11 +42,15 @@ class LINK{
     public:
         int total_msg;
         string LAN;
-        LINK(string lan_to_be_connected){
-            total_msg = 0;
-            LAN = lan_to_be_connected;
-        }
         vector <int> Data;
+        LINK(string lan_name){
+            total_msg = 0;
+            LAN = lan_name;
+        }
+        // LINK(const LINK &P){
+        //     total_msg = P.total_msg;
+        //     LAN = P.LAN;
+        // }
         void load(vector <int> msg);
         void clear();
         vector <int> accept();
@@ -77,9 +58,7 @@ class LINK{
 
 
 void LINK::load(vector <int> msg){
-    for (int i=0; i<msg.size(); i++){
-        Data.push_back(msg[i]);
-    }
+    Data.insert(Data.end(), msg.begin(), msg.end());
     total_msg += msg.size()/3;
 }
 
@@ -91,9 +70,36 @@ void LINK::clear(){
 vector <int> LINK::accept(){
     vector <int> data;
     data = Data;
-    clear();
     return data;
 }
+
+//////////////////////PORT//////////////////////////////
+
+
+class PORT{
+    public:
+        string status;
+        int ID;
+        LINK* Link;
+        string port_lan;
+
+        PORT(int id, string lan_name){
+            ID = id+1;
+            status = "DP";
+            Link = NULL;
+            port_lan=lan_name;
+        }
+
+        // PORT(const PORT &p){
+        //     status = p.status;
+        //     ID = p.ID;
+        //     *Link = *(p.Link);
+        // }
+
+        void linking(LINK &link){
+            Link = &link;
+            }
+};
 
 
 /////////////////////////////BRIDGES/////////////////////////////////////
@@ -112,43 +118,72 @@ class BRDG{
 
 
         BRDG(int id){
+            RP = 0;
             ID = id;
             Name = "B" + to_string(id);
             rootDis = 0;
-            root_ID = id;
-            sending_brg = id;
+            root_ID = ID;
+            sending_brg = ID;
         }
 
         void write(vector <int> message, int port);
         vector <int> read(int port);
         void forward();
         void generate();
-        void check_update(vector <int> msg, int msg_port);              
+        void check_update(vector <int> msg, int msg_port); 
+        void add_port(int port, string lan_name);
+        void status_update(string update, int port, string previous);
 };
 
+void BRDG::status_update(string update, int port, string previous){
+    if (update == "NP"){
+        ports[port-1].status = update;
+        return;
+    }
+    if (RP>0) ports[RP-1].status = previous;
+    RP = port;
+    ports[port-1].status = update;
+}
+
+void BRDG::add_port(int port, string lan_name){
+    ports.push_back(PORT(port, lan_name));
+    NonNull.push_back(port+1);
+}
 
 
 void BRDG::check_update(vector <int> msg, int msg_port){
-    for(int i = 0; i < msg.size()/3; i++){
-        cout<<"r "<<Name<<" "<< "(B" + to_string(msg[i]) + ", " + to_string(msg[i+1])+", B" + to_string(msg[i+2]) + ")    port: "<<to_string(ports[i].ID)<<endl;
-        if (msg[i] < root_ID){
-            root_ID = msg[i];
-            rootDis = msg[i+1] + 1;
-            sending_brg = msg[i+2];
-            RP = msg_port;
-        }
-        else if (msg[i] == root_ID  && msg[i+1] + 1 < rootDis){
-            rootDis = msg[i+1] + 1;
-            sending_brg = msg[i+2];
-            RP = msg_port;
-        }
-        else if (msg[i] == root_ID && msg[i+1] + 1 == rootDis && sending_brg <msg[i+2]){
-            sending_brg = msg[i+2];
-            RP = msg[i+1];
-        }
-        else if (msg[i] == root_ID && msg[i+1] +1 == rootDis && sending_brg == msg[i+2] && msg_port != RP){
-            ports[msg_port].status = "NP";
-            NonNull.erase(find(NonNull.begin(), NonNull.end(), msg_port));
+    for(int i = 0; i < int(msg.size()/3); i++){
+        if (msg[3*i+2] != ID && msg[3*i+2] > 0){
+            cout<<"r "<<Name<<" "<< "(B" + to_string(msg[3*i]) + ", " + to_string(msg[3*i+1])+", B" + to_string(msg[3*i+2]) + ")    port: "<<to_string(msg_port)<<endl;
+            if (msg[3*i] < root_ID){
+                root_ID = msg[3*i];
+                rootDis = msg[3*i+1] + 1;
+                sending_brg = msg[3*i+2];
+                status_update("RP", msg_port, "DP");
+            }
+            else if (msg[3*i] == root_ID  && msg[3*i+1] + 1 < rootDis){
+                rootDis = msg[3*i+1] + 1;
+                sending_brg = msg[3*i+2];
+                status_update("RP", msg_port, "NoChange");
+
+            }
+            else if (msg[3*i] == root_ID && msg[3*i+1] + 1 == rootDis && msg[3*i+2] < sending_brg){
+                if (sending_brg < ID){
+                    NonNull.erase(find(NonNull.begin(), NonNull.end(), RP));
+                    status_update("RP", msg_port, "NP");
+                }
+                sending_brg = msg[3*i+2];
+            }
+            else if (msg[3*i] == root_ID && msg[3*i+1] + 1 >= rootDis && msg[3*i+2] > sending_brg){
+                if (sending_brg < ID){
+                    status_update("NP", msg_port, "NoChange");
+                    NonNull.erase(find(NonNull.begin(), NonNull.end(), msg_port));
+                }          
+            }
+            else if (msg[3*i] == root_ID && msg[3*i+1] +1 >= rootDis && msg[3*i+2] == sending_brg && msg_port != RP){
+                status_update("NP", msg_port, "NoChange");
+                NonNull.erase(find(NonNull.begin(), NonNull.end(), msg_port));
+            }
         }
     }
 }
@@ -168,8 +203,10 @@ vector <int> BRDG::read(int port){                //reading clears the link
 void BRDG::generate(){
     vector <int> msg{ID, 0, ID};
     for (int i=0; i<ports.size(); i++){
-        write(msg, i+1);
-        cout<<"s "<<Name<<" "<< "(" + Name + ", 0, " + Name + ")    port: "<<to_string(ports[i].ID)<<endl;
+        if (ports[i].status != "NP"){
+            ports[i].Link->load(msg);
+            cout<<"s "<<Name<<" "<< "(" + Name + ", 0, " + Name + ")    port: "<<to_string(i+1)<<endl;
+        }   
     }
 }
 
@@ -184,11 +221,19 @@ void BRDG::forward(){
             BUFFER.push_back(readed);
         }
     }
-    for (int i=0; i<NonNull.size(); i++){                   //update with gathered information
+    for (int i=0; i<BUFFER.size(); i++){                   //update with gathered information
         check_update(BUFFER[i], NonNull[i]);
     }
+    for (int i = 0; i<BUFFER.size(); i++){
+        for (int j=0; j< BUFFER[i].size()/3; j++){
+            if (BUFFER[i][3*j] > 0){
+                BUFFER[i][3*j+1]++;
+                BUFFER[i][3*j+2] = ID;
+            }
+        }
+    }
     for (int i=0; i < NonNull.size(); i++){
-        ports[NonNull[i]].Link->load(filter(slicing(BUFFER, i)));
+        ports[NonNull[i]-1].Link->load(filter(slicing(BUFFER, i)));
     }
 }
 
