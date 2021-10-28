@@ -1,5 +1,3 @@
- #define MAX_BRIDGES
-
 #include <iostream>
 #include <string>
 #include <vector>
@@ -16,7 +14,8 @@ class PORT;
 class LINK;
 
 
-
+unsigned int TIME=0;
+vector <string> traces;
 
 
 //////////////////////////EASE///////////////////////////
@@ -47,10 +46,6 @@ class LINK{
             total_msg = 0;
             LAN = lan_name;
         }
-        // LINK(const LINK &P){
-        //     total_msg = P.total_msg;
-        //     LAN = P.LAN;
-        // }
         void load(vector <int> msg);
         void clear();
         vector <int> accept();
@@ -89,13 +84,6 @@ class PORT{
             Link = NULL;
             port_lan=lan_name;
         }
-
-        // PORT(const PORT &p){
-        //     status = p.status;
-        //     ID = p.ID;
-        //     *Link = *(p.Link);
-        // }
-
         void linking(LINK &link){
             Link = &link;
             }
@@ -153,8 +141,9 @@ void BRDG::add_port(int port, string lan_name){
 
 void BRDG::check_update(vector <int> msg, int msg_port){
     for(int i = 0; i < int(msg.size()/3); i++){
-        if (msg[3*i+2] != ID && msg[3*i+2] > 0){
-            cout<<"r "<<Name<<" "<< "(B" + to_string(msg[3*i]) + ", " + to_string(msg[3*i+1])+", B" + to_string(msg[3*i+2]) + ")    port: "<<to_string(msg_port)<<endl;
+        if (msg[3*i+2] != ID && msg[3*i+2] > 0 && find(NonNull.begin(), NonNull.end(), msg_port) != NonNull.end()){
+            traces.push_back(to_string(TIME) + " r " + Name + " (B" + to_string(msg[3*i]) + ", " + to_string(msg[3*i+1])+", B" + to_string(msg[3*i+2]) + ")    port: " + to_string(msg_port));
+            //cout<<to_string(TIME) +" r "<<Name<<" "<< "(B" + to_string(msg[3*i]) + ", " + to_string(msg[3*i+1])+", B" + to_string(msg[3*i+2]) + ")    port: "<<to_string(msg_port)<<endl;
             if (msg[3*i] < root_ID){
                 root_ID = msg[3*i];
                 rootDis = msg[3*i+1] + 1;
@@ -163,18 +152,23 @@ void BRDG::check_update(vector <int> msg, int msg_port){
             }
             else if (msg[3*i] == root_ID  && msg[3*i+1] + 1 < rootDis){
                 rootDis = msg[3*i+1] + 1;
+                if (sending_brg < ID){
+                    NonNull.erase(find(NonNull.begin(), NonNull.end(), RP));
+                    status_update("RP", msg_port, "NP");
+                }
+                else{
+                    status_update("RP", msg_port, "DP");
+                }
                 sending_brg = msg[3*i+2];
-                status_update("RP", msg_port, "NoChange");
-
             }
-            else if (msg[3*i] == root_ID && msg[3*i+1] + 1 == rootDis && msg[3*i+2] < sending_brg){
+            else if (msg[3*i] == root_ID && msg[3*i+1] + 1 >= rootDis && msg[3*i+2] < sending_brg){
                 if (sending_brg < ID){
                     NonNull.erase(find(NonNull.begin(), NonNull.end(), RP));
                     status_update("RP", msg_port, "NP");
                 }
                 sending_brg = msg[3*i+2];
             }
-            else if (msg[3*i] == root_ID && msg[3*i+1] + 1 >= rootDis && msg[3*i+2] > sending_brg){
+            else if (msg[3*i] == root_ID && msg[3*i+1] + 1 >= rootDis && msg[3*i+2] > sending_brg && msg_port!= RP){
                 if (sending_brg < ID){
                     status_update("NP", msg_port, "NoChange");
                     NonNull.erase(find(NonNull.begin(), NonNull.end(), msg_port));
@@ -205,7 +199,8 @@ void BRDG::generate(){
     for (int i=0; i<ports.size(); i++){
         if (ports[i].status != "NP"){
             ports[i].Link->load(msg);
-            cout<<"s "<<Name<<" "<< "(" + Name + ", 0, " + Name + ")    port: "<<to_string(i+1)<<endl;
+            traces.push_back(to_string(TIME) + " s " + Name + " (" + Name + ", 0, " + Name + ")    port: " + to_string(i+1));
+            //cout<<to_string(TIME) +" s "<<Name<<" "<< "(" + Name + ", 0, " + Name + ")    port: "<<to_string(i+1)<<endl;
         }   
     }
 }
@@ -236,26 +231,5 @@ void BRDG::forward(){
         ports[NonNull[i]-1].Link->load(filter(slicing(BUFFER, i)));
     }
 }
-
-
-
-
-
-
-///////////////////////////LAN////////////////////////
-
-
-class LAN{
-    public:
-        string name;
-        LINK* Link;
-        LAN(string nm, LINK* lnk){
-            name = nm;
-            Link = lnk;
-        }
-        LINK* link(){
-            return Link;
-        }
-};
 
 #endif
